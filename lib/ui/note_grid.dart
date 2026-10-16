@@ -36,7 +36,8 @@ class NoteGrid extends StatelessWidget {
       final pad = box.maxWidth < 600 ? 12.0 : 24.0;
       final width = box.maxWidth - 2 * pad;
       const gap = 14.0;
-      final cols = max(width >= 340 ? 2 : 1, (width / 250).floor());
+      // One full-width column on phones, so previews are readable.
+      final cols = width < 500 ? 1 : max(2, (width / 250).floor());
       final colWidth = (width - gap * (cols - 1)) / cols;
 
       final columns = List.generate(cols, (_) => <NoteSummary>[]);

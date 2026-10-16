@@ -16,12 +16,17 @@ class NoteSummary {
   final String path;
   final String title;
   final List<String> preview;
+
+  /// The same items as [preview], structured, for cards that draw their own
+  /// bullets and checkboxes.
+  final List<NoteLine> previewLines;
   final int todoCount, doneCount;
   final String _haystack;
 
   NoteSummary(this.path, Note note)
       : title = displayTitle(path, note),
         preview = previewOf(note),
+        previewLines = note.lines.where((l) => l.text.trim().isNotEmpty).take(6).toList(),
         todoCount = note.todoCount,
         doneCount = note.doneCount,
         _haystack = fold([note.title, for (final l in note.lines) l.text].join('\n'));

@@ -122,7 +122,7 @@ class ItemRow extends StatelessWidget {
               textCapitalization: TextCapitalization.sentences,
               onEditingComplete: keys.onEnter,
               onChanged: onChanged,
-              decoration: const InputDecoration.collapsed(hintText: '', filled: false),
+              decoration: bareField(),
             ),
           ),
         ),

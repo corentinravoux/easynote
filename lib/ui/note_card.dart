@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/controller.dart';
+import '../format/note.dart';
 import 'theme.dart';
 
 /// A note as a ruled index card: title, crimson rule, items on blue lines.
@@ -13,7 +14,7 @@ class NoteCard extends StatefulWidget {
 
   /// Height estimate used to balance the masonry columns.
   static double estimate(NoteSummary n) =>
-      64 + ruleHeight * n.preview.length + (n.todoCount > 0 || n.conflict ? 26 : 0);
+      64 + ruleHeight * n.previewLines.length + (n.todoCount > 0 || n.conflict ? 26 : 0);
 
   @override
   State<NoteCard> createState() => _NoteCardState();
@@ -56,23 +57,29 @@ class _NoteCardState extends State<NoteCard> {
                 ]),
               ),
               Container(height: 1.5, color: p.accent.withValues(alpha: p.flat ? 1 : 0.75)),
-              if (n.preview.isNotEmpty)
+              if (n.previewLines.isNotEmpty)
                 CustomPaint(
                   painter: RuledPaper(p.rule),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      for (final line in n.preview)
+                      for (final line in n.previewLines)
                         SizedBox(
                           height: ruleHeight,
-                          child: Text(
-                            line,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: line.trimLeft().startsWith('☑')
-                                ? body.copyWith(color: p.muted, decoration: TextDecoration.lineThrough, decorationColor: p.muted)
-                                : body,
-                          ),
+                          child: Row(children: [
+                            SizedBox(width: 16.0 * line.indent),
+                            _marker(p, line.kind),
+                            Expanded(
+                              child: Text(
+                                line.kind == ItemKind.plain ? line.text.trim() : line.text,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: line.kind == ItemKind.done
+                                    ? body.copyWith(color: p.muted, decoration: TextDecoration.lineThrough, decorationColor: p.muted)
+                                    : body,
+                              ),
+                            ),
+                          ]),
                         ),
                     ]),
                   ),
@@ -96,4 +103,31 @@ class _NoteCardState extends State<NoteCard> {
       ),
     );
   }
+
+  Widget _marker(Palette p, ItemKind kind) => switch (kind) {
+        ItemKind.bullet => SizedBox(
+            width: 16,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(width: 4, height: 4, decoration: BoxDecoration(color: p.ink, shape: BoxShape.circle)),
+            ),
+          ),
+        ItemKind.todo || ItemKind.done => SizedBox(
+            width: 20,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: kind == ItemKind.done ? p.muted : Colors.transparent,
+                  borderRadius: BorderRadius.circular(2),
+                  border: Border.all(color: kind == ItemKind.done ? p.muted : p.ink, width: 1.3),
+                ),
+                child: kind == ItemKind.done ? Icon(Icons.check, size: 9, color: p.card) : null,
+              ),
+            ),
+          ),
+        ItemKind.plain => const SizedBox.shrink(),
+      };
 }

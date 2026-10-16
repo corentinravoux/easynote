@@ -252,7 +252,7 @@ class _EditorPageState extends State<EditorPage> {
           const SingleActivator(LogicalKeyboardKey.keyS, control: true): _flush,
         },
         child: Scaffold(
-          backgroundColor: p.desk,
+          backgroundColor: narrow ? p.card : p.desk,
           appBar: _bar(p, narrow),
           body: _loading
               ? const SizedBox.shrink()
@@ -268,7 +268,7 @@ class _EditorPageState extends State<EditorPage> {
   PreferredSizeWidget _bar(Palette p, bool narrow) {
     final folder = _path != null ? parentOf(_path!) : widget.folder;
     return AppBar(
-      backgroundColor: p.desk,
+      backgroundColor: narrow ? p.card : p.desk,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
@@ -377,9 +377,8 @@ class _EditorPageState extends State<EditorPage> {
                     textCapitalization: TextCapitalization.sentences,
                     onChanged: (_) => _changed(),
                     onEditingComplete: () => _focusRow(0, end: false),
-                    decoration: InputDecoration.collapsed(
-                      hintText: 'Title',
-                      filled: false,
+                    decoration: bareField(
+                      hint: 'Title',
                       hintStyle: titleText(p, size: narrow ? 24 : 28).copyWith(color: p.muted.withValues(alpha: 0.6)),
                     ),
                   ),

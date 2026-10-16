@@ -44,7 +44,7 @@ class Palette extends ThemeExtension<Palette> {
     card: Color(0xFFFFFFFF),
     ink: Color(0xFF1F2A44),
     muted: Color(0xFF5E6A82),
-    rule: Color(0xFFDCE5F2),
+    rule: Color(0xFFE5ECF6),
     accent: Color(0xFFC8344F),
     border: Color(0xFFD5DCE6),
     highlight: Color(0xFFDDE6F3),
@@ -55,7 +55,7 @@ class Palette extends ThemeExtension<Palette> {
     card: Color(0xFF1B2336),
     ink: Color(0xFFE4E9F2),
     muted: Color(0xFF97A3BA),
-    rule: Color(0xFF26324B),
+    rule: Color(0xFF222D44),
     accent: Color(0xFFF06B84),
     border: Color(0xFF2C3954),
     highlight: Color(0xFF2A3755),
@@ -66,7 +66,7 @@ class Palette extends ThemeExtension<Palette> {
     card: Color(0xFFFFFFFF),
     ink: Color(0xFF000000),
     muted: Color(0xFF000000),
-    rule: Color(0xFFBDBDBD),
+    rule: Color(0xFFCCCCCC),
     accent: Color(0xFF000000),
     border: Color(0xFF000000),
     highlight: Color(0xFFDDDDDD),
@@ -225,6 +225,18 @@ class _NoTransition extends PageTransitionsBuilder {
           Animation<double> a, Animation<double> b, Widget child) =>
       child;
 }
+
+/// A text field that is just text on the card: no box, no padding.
+InputDecoration bareField({String? hint, TextStyle? hintStyle}) => InputDecoration(
+      isCollapsed: true,
+      filled: false,
+      hintText: hint,
+      hintStyle: hintStyle,
+      contentPadding: EdgeInsets.zero,
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
+    );
 
 /// Horizontal ruled lines every [ruleHeight], starting [top] pixels down.
 class RuledPaper extends CustomPainter {
