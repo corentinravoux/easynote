@@ -35,12 +35,24 @@ class SyncEngine {
   final String device;
   final DateTime Function() clock;
 
+  /// Identity of [remote] (`owner/repo@branch`). When it differs from the
+  /// one the sync state was built against, that state is dropped and the
+  /// first sync rules apply: local notes are kept and uploaded, never deleted.
+  final String? remoteId;
+
   SyncEngine(this.store, this.remote,
-      {required this.device, DateTime Function()? clock})
+      {required this.device, DateTime Function()? clock, this.remoteId})
       : clock = clock ?? DateTime.now;
 
   Future<SyncResult> sync() async {
     final result = SyncResult();
+    final state = store.state;
+    if (remoteId != null && state.remote != remoteId) {
+      state
+        ..remote = remoteId
+        ..head = null
+        ..base = {};
+    }
     try {
       await _pull(result);
       try {
@@ -59,6 +71,10 @@ class SyncEngine {
     } on RemoteException catch (e) {
       result.offline = e.offline;
       result.error = e.message;
+    } catch (e) {
+      // Anything else (bad JSON from a captive portal, a disk error) still
+      // ends the sync cleanly; local files are untouched.
+      result.error = 'sync failed: $e';
     } finally {
       await store.saveState();
     }
@@ -97,12 +113,12 @@ class SyncEngine {
       if (r == b) continue; // remote unchanged: local side wins
       if (l == r) {
         _setBase(p, r); // converged
-      } else if (l == b) {
-        await _applyRemote(p, r, result);
+      } else if (l == b || l == null || isKeep(p)) {
+        // Local unchanged, or deleted here while edited there (an edit
+        // beats a deletion).
+        await _applyRemote(p, l, r, result);
       } else if (r == null) {
         base.remove(p); // deleted remotely, edited here: re-create
-      } else if (l == null || isKeep(p)) {
-        await _applyRemote(p, r, result); // an edit beats a deletion
       } else {
         await _conflict(p, r, result);
       }
@@ -118,23 +134,53 @@ class SyncEngine {
     }
   }
 
-  Future<void> _applyRemote(String path, String? sha, SyncResult result) async {
-    if (sha == null) {
-      await store.delete(path);
-      result.deleted++;
+  /// Bring the remote version [sha] (null: deleted) of [path] here, provided
+  /// the local file still has SHA [expected]. If the editor wrote the file
+  /// since the sync looked at it, the newer local text wins as a conflict
+  /// instead of being overwritten.
+  Future<void> _applyRemote(
+      String path, String? expected, String? sha, SyncResult result) async {
+    final bytes = sha == null ? null : await remote.blob(sha);
+    if (await store.replaceIfUnchanged(path, expected, bytes)) {
+      if (sha == null) {
+        result.deleted++;
+      } else {
+        result.downloaded++;
+      }
+      _setBase(path, sha);
+    } else if (sha == null) {
+      store.state.base.remove(path); // re-created at push
     } else {
-      await store.writeBytes(path, await remote.blob(sha));
-      result.downloaded++;
+      await _conflict(path, sha, result, remoteBytes: bytes);
     }
-    _setBase(path, sha);
   }
 
-  Future<void> _conflict(String path, String remoteSha, SyncResult result) async {
-    final mine = await store.readBytes(path);
-    final copy = await _conflictPath(path);
-    await store.writeBytes(copy, _markConflict(mine!));
-    await _applyRemote(path, remoteSha, result);
-    result.conflicts.add(copy);
+  /// Keep the local version of [path] as a conflict copy and put the remote
+  /// version [remoteSha] in its place. Retries if the file keeps changing;
+  /// if it never settles, nothing is replaced and the next sync tries again.
+  Future<void> _conflict(String path, String remoteSha, SyncResult result,
+      {List<int>? remoteBytes}) async {
+    final theirs = remoteBytes ?? await remote.blob(remoteSha);
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final mine = await store.readBytes(path);
+      if (mine == null) {
+        if (await store.replaceIfUnchanged(path, null, theirs)) {
+          _setBase(path, remoteSha);
+          result.downloaded++;
+          return;
+        }
+        continue;
+      }
+      final copy = await _conflictPath(path);
+      await store.writeBytes(copy, _markConflict(mine));
+      if (await store.replaceIfUnchanged(path, gitBlobSha(mine), theirs)) {
+        _setBase(path, remoteSha);
+        result.downloaded++;
+        result.conflicts.add(copy);
+        return;
+      }
+      await store.delete(copy); // stale: the file changed again
+    }
   }
 
   Future<String> _conflictPath(String path) =>

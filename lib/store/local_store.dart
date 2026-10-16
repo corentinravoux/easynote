@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'blob_sha.dart';
+import 'lock.dart';
 import 'paths.dart';
 import 'sync_state.dart';
 
@@ -10,11 +11,14 @@ const _recentCap = 50;
 /// The device's copy of the note tree, plus its [SyncState].
 ///
 /// Paths are posix and relative to [root]. Every write goes through a
-/// temporary file and a rename, so a crash never leaves half a note.
+/// temporary file and a rename, so a crash never leaves half a note, and all
+/// writes run one at a time, so a sync and the editor never interleave.
 class LocalStore {
   final Directory root;
   final File stateFile;
   SyncState state;
+  final _lock = Lock();
+  static int _tmpCounter = 0;
 
   LocalStore._(this.root, this.stateFile, this.state);
 
@@ -28,10 +32,10 @@ class LocalStore {
     return LocalStore._(root, stateFile, state);
   }
 
-  Future<void> saveState() async {
-    await stateFile.parent.create(recursive: true);
-    await _atomicWrite(stateFile, utf8.encode(jsonEncode(state.toJson())));
-  }
+  Future<void> saveState() => _lock.run(() async {
+        await stateFile.parent.create(recursive: true);
+        await _atomicWrite(stateFile, utf8.encode(jsonEncode(state.toJson())));
+      });
 
   File _file(String path) => File('${root.path}/$path');
   Directory _dir(String path) =>
@@ -68,18 +72,44 @@ class LocalStore {
     return b == null ? null : utf8.decode(b, allowMalformed: true);
   }
 
-  Future<void> writeBytes(String path, List<int> bytes) async {
+  Future<void> writeBytes(String path, List<int> bytes) =>
+      _lock.run(() => _write(path, bytes));
+
+  Future<void> _write(String path, List<int> bytes) async {
     final f = _file(path);
     await f.parent.create(recursive: true);
     await _atomicWrite(f, bytes);
   }
+
+  Future<String?> _shaOf(String path) async {
+    final f = _file(path);
+    return await f.exists() ? gitBlobSha(await f.readAsBytes()) : null;
+  }
+
+  /// Write [bytes] (or delete the file when null) only if the file still has
+  /// blob SHA [expected] (null: does not exist). Returns false, changing
+  /// nothing, when the file changed meanwhile — e.g. the editor saved it
+  /// while a sync was downloading.
+  Future<bool> replaceIfUnchanged(
+          String path, String? expected, List<int>? bytes) =>
+      _lock.run(() async {
+        if (await _shaOf(path) != expected) return false;
+        if (bytes == null) {
+          await _delete(path);
+        } else {
+          await _write(path, bytes);
+        }
+        return true;
+      });
 
   Future<void> writeNote(String path, String content) =>
       writeBytes(path, utf8.encode(content));
 
   /// Remove a file, then prune parent folders left empty (a folder holding
   /// `.keep` is not empty, so explicit folders survive).
-  Future<void> delete(String path) async {
+  Future<void> delete(String path) => _lock.run(() => _delete(path));
+
+  Future<void> _delete(String path) async {
     final f = _file(path);
     if (await f.exists()) await f.delete();
     state.recent.remove(path);
@@ -95,21 +125,24 @@ class LocalStore {
     }
   }
 
-  Future<void> createFolder(String folder) async {
-    final keep = _file(joinPath(folder, keepFile));
-    if (!await keep.exists()) await writeBytes(joinPath(folder, keepFile), []);
-  }
+  Future<void> createFolder(String folder) => _lock.run(() async {
+        final keep = joinPath(folder, keepFile);
+        if (!await _file(keep).exists()) await _write(keep, []);
+      });
 
   /// Delete [folder] and everything in it.
-  Future<void> deleteFolder(String folder) async {
-    final d = _dir(folder);
-    if (await d.exists()) await d.delete(recursive: true);
-    state.recent.removeWhere((p, _) => isUnder(p, folder));
-    await _prune(parentOf(folder));
-  }
+  Future<void> deleteFolder(String folder) => _lock.run(() async {
+        final d = _dir(folder);
+        if (await d.exists()) await d.delete(recursive: true);
+        state.recent.removeWhere((p, _) => isUnder(p, folder));
+        await _prune(parentOf(folder));
+      });
 
   /// Move a note or a whole folder. Refuses to overwrite.
-  Future<void> move(String from, String to) async {
+  Future<void> move(String from, String to) =>
+      _lock.run(() => _move(from, to));
+
+  Future<void> _move(String from, String to) async {
     if (from == to) return;
     final isFile = await _file(from).exists();
     final target = isFile ? _file(to) : _dir(to);
@@ -181,7 +214,7 @@ class LocalStore {
 
   static Future<void> _atomicWrite(File f, List<int> bytes) async {
     final name = f.uri.pathSegments.last;
-    final tmp = File('${f.parent.path}/.$name.tmp');
+    final tmp = File('${f.parent.path}/.$name.$pid-${_tmpCounter++}.tmp');
     await tmp.writeAsBytes(bytes, flush: true);
     await tmp.rename(f.path);
   }

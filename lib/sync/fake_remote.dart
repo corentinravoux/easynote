@@ -13,11 +13,15 @@ class FakeRemote implements RemoteRepo {
   int calls = 0;
 
   /// When set, the next call throws it (then it is cleared, unless [sticky]).
-  Exception? failNext;
+  Object? failNext;
   bool sticky = false;
 
   /// Runs just before each commit, to simulate another device pushing.
   void Function()? beforeCommit;
+
+  /// Runs before a blob is returned, to simulate the user editing while a
+  /// download is in flight.
+  Future<void> Function()? beforeBlob;
 
   FakeRemote([Map<String, List<int>> initial = const {}]) : _head = 'c0' {
     _trees[_head] = {};
@@ -75,6 +79,7 @@ class FakeRemote implements RemoteRepo {
   @override
   Future<List<int>> blob(String sha) async {
     _call();
+    await beforeBlob?.call();
     return List.of(_blobs[sha]!);
   }
 

@@ -44,18 +44,31 @@ class GithubRemote implements RemoteRepo {
           await _client.send(req).timeout(timeout));
     } on TimeoutException {
       throw const RemoteException('offline', offline: true);
-    } on SocketException {
+    } on IOException {
+      // Sockets, TLS handshakes, DNS: all mean GitHub is out of reach.
       throw const RemoteException('offline', offline: true);
     } on http.ClientException {
       throw const RemoteException('offline', offline: true);
     }
     final s = res.statusCode;
-    if (s >= 200 && s < 300) return jsonDecode(res.body);
-    if (s == 403 && res.headers['x-ratelimit-remaining'] == '0') {
+    if (s >= 200 && s < 300) {
+      try {
+        return jsonDecode(res.body);
+      } on FormatException {
+        // A captive portal or proxy answering in place of GitHub.
+        throw const RemoteException('unexpected answer: is this network behind a login page?');
+      }
+    }
+    final rateLimited = s == 429 ||
+        (s == 403 &&
+            (res.headers['x-ratelimit-remaining'] == '0' || res.headers.containsKey('retry-after')));
+    if (rateLimited) {
       throw const RemoteException('rate limited by GitHub, try again later');
     }
     if (s == 401 || s == 403) throw AuthException(s);
-    if (isRefUpdate && s == 422) throw const NonFastForwardException();
+    if (isRefUpdate && s == 422 && res.body.toLowerCase().contains('fast forward')) {
+      throw const NonFastForwardException();
+    }
     if (s == 409 && res.body.contains('empty')) {
       throw const RemoteException(
           'repository is empty: add a README on github.com first');

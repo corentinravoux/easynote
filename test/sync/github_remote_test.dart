@@ -94,6 +94,14 @@ void main() {
     expect(bodies['PATCH /git/refs/heads/main'], {'sha': 'c2', 'force': false});
   });
 
+  test('other 422s on the ref update are plain errors', () async {
+    final r = remoteWith((req) async => req.method == 'PATCH'
+        ? json({'message': 'Reference does not exist'}, 422)
+        : json({'sha': 'x', 'tree': {'sha': 't'}}, 201));
+    expect(r.commit(parent: 'p', changes: {'a.md': null}, message: 'm'),
+        throwsA(isA<RemoteException>()));
+  });
+
   test('ref update 422 is non-fast-forward', () async {
     final r = remoteWith((req) async => req.method == 'PATCH'
         ? json({'message': 'Update is not a fast forward'}, 422)
@@ -114,6 +122,25 @@ void main() {
           headers: {'x-ratelimit-remaining': '0'}));
       await expectLater(r.headSha(),
           throwsA(isA<RemoteException>().having((e) => e.message, 'm', contains('rate'))));
+    });
+    test('secondary rate limit (403 with retry-after, or 429) is not an auth error', () async {
+      for (final res in [
+        http.Response('{}', 403, headers: {'retry-after': '60'}),
+        http.Response('{}', 429),
+      ]) {
+        final r = remoteWith((_) async => res);
+        await expectLater(r.headSha(),
+            throwsA(isA<RemoteException>().having((e) => e.message, 'm', contains('rate'))));
+      }
+    });
+    test('a non-JSON success page (captive portal) is a remote error', () async {
+      final r = remoteWith((_) async => http.Response('<html>login</html>', 200));
+      await expectLater(r.headSha(), throwsA(isA<RemoteException>()));
+    });
+    test('TLS failure is offline', () async {
+      final r = remoteWith((_) async => throw const HandshakeException('bad cert'));
+      await expectLater(r.headSha(),
+          throwsA(isA<RemoteException>().having((e) => e.offline, 'offline', isTrue)));
     });
     test('409 on empty repo explains itself', () async {
       final r = remoteWith((_) async => json({'message': 'Git Repository is empty.'}, 409));

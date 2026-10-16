@@ -60,11 +60,15 @@ class AppController extends ChangeNotifier {
   RemoteRepo? Function() remoteFactory;
   String device;
 
+  /// `owner/repo@branch` of the configured remote; see [SyncEngine.remoteId].
+  String? Function() remoteId;
+
   AppController({
     required this.store,
     required this.remoteFactory,
     required this.device,
-  });
+    String? Function()? remoteId,
+  }) : remoteId = remoteId ?? (() => null);
 
   final Map<String, NoteSummary> _notes = {};
   List<String> _folders = [];
@@ -152,9 +156,34 @@ class AppController extends ChangeNotifier {
     return parseNote(text);
   }
 
-  /// Sync now. Concurrent calls share one run.
+  bool _again = false;
+
+  /// Sync now. A call made while a sync runs is not lost: one more sync
+  /// follows, so a note saved mid-sync is still pushed.
   Future<SyncResult?> sync() {
-    return _running ??= _sync().whenComplete(() => _running = null);
+    if (_running != null) {
+      _again = true;
+      return _running!;
+    }
+    return _running = () async {
+      SyncResult? r;
+      do {
+        _again = false;
+        r = await _guardedSync();
+      } while (_again);
+      return r;
+    }()
+        .whenComplete(() => _running = null);
+  }
+
+  Future<SyncResult?> _guardedSync() async {
+    try {
+      return await _sync();
+    } catch (e) {
+      status = SyncStatus(SyncPhase.error, message: 'sync failed: $e');
+      notifyListeners();
+      return null;
+    }
   }
 
   Future<SyncResult?> _sync() async {
@@ -166,7 +195,8 @@ class AppController extends ChangeNotifier {
     }
     status = const SyncStatus(SyncPhase.syncing);
     notifyListeners();
-    final engine = SyncEngine(store, remote, device: device.isEmpty ? 'device' : device);
+    final engine = SyncEngine(store, remote,
+        device: device.isEmpty ? 'device' : device, remoteId: remoteId());
     final r = await engine.sync();
     await reload();
     final pending = await engine.pendingCount();

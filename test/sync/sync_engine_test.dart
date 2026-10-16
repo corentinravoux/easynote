@@ -275,4 +275,57 @@ void main() {
     final copies = (await e.store.notePaths()).where((p) => p.contains('.conflict-'));
     expect(copies, ['a.conflict-lap-top-20261016-1205-2.md', 'a.conflict-lap-top-20261016-1205.md']);
   });
+
+  test('a save made while a download is in flight is never overwritten', () async {
+    // Review finding 1: the pull decided "local unchanged", then the editor
+    // saved before the remote text arrived.
+    remote.externalCommit({'a.md': b('# A\n')});
+    final e = await device('laptop');
+    await e.sync();
+    remote.externalCommit({'a.md': b('# A\n- theirs\n')});
+    remote.beforeBlob = () async {
+      remote.beforeBlob = null;
+      await e.store.writeBytes('a.md', b('# A\n- typed meanwhile\n'));
+    };
+    final r = await e.sync();
+    expect(r.conflicts, hasLength(1));
+    final texts = [for (final p in await e.store.notePaths()) s(await e.store.readBytes(p))].join();
+    expect(texts, allOf(contains('typed meanwhile'), contains('theirs')));
+    expect(remote.files().values.map(s).join(), contains('typed meanwhile'));
+  });
+
+  test('a remote deletion does not remove a note edited during the sync', () async {
+    remote.externalCommit({'a.md': b('# A\n'), 'b.md': b('# B\n')});
+    final e = await device('laptop');
+    await e.sync();
+    remote.externalCommit({'a.md': null, 'b.md': b('# B\n- changed\n')});
+    remote.beforeBlob = () async {
+      remote.beforeBlob = null;
+      await e.store.writeBytes('a.md', b('# A\n- edited\n'));
+    };
+    await e.sync();
+    expect(await local(e, 'a.md'), '# A\n- edited\n');
+    expect(remoteText('a.md'), '# A\n- edited\n');
+  });
+
+  test('pointing the app at another repo keeps local notes', () async {
+    // Review finding 3.
+    remote.externalCommit({'a.md': b('# A\n')});
+    final store = (await device('laptop')).store;
+    await SyncEngine(store, remote, device: 'laptop', remoteId: 'me/old@main').sync();
+    final other = FakeRemote({'README.md': b('x\n')});
+    final r = await SyncEngine(store, other, device: 'laptop', remoteId: 'me/new@main').sync();
+    expect(r.error, isNull);
+    expect(s(await store.readBytes('a.md')), '# A\n');
+    expect(s(other.files()['a.md']), '# A\n');
+  });
+
+  test('concurrent writes to the store do not collide', () async {
+    final e = await device('laptop');
+    await Future.wait([
+      for (var i = 0; i < 20; i++) e.store.writeBytes('a.md', b('# A\n- $i\n')),
+      for (var i = 0; i < 5; i++) e.store.saveState(),
+    ]);
+    expect(await local(e, 'a.md'), '# A\n- 19\n');
+  });
 }

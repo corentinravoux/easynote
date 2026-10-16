@@ -82,16 +82,19 @@ class _EditorPageState extends State<EditorPage> {
   /// typed anything since it was opened or saved.
   Future<void> _onControllerChange() async {
     final path = _path;
-    if (_loading || _dirty || path == null || _closed) return;
+    if (_loading || _dirty || path == null || _closed || _saving != null) return;
     final text = await c.store.readNote(path);
     if (text == null || text == _basedOn || _dirty || !mounted) return;
     final note = parseNote(text);
+    final hadFocus = _rows.any((r) => r.focus.hasFocus);
+    final caret = _rows.isEmpty ? 0 : _caret(_current.clamp(0, _rows.length - 1));
     setState(() {
       _basedOn = text;
       _original = note;
       _title.text = note.title;
       _model = EditorModel(note.lines);
-      _rebuildRows();
+      _rebuildRows(
+          focus: hadFocus ? (index: _current.clamp(0, _model.lines.length - 1), caret: caret) : null);
     });
   }
 
@@ -156,7 +159,7 @@ class _EditorPageState extends State<EditorPage> {
 
   Note _currentNote() {
     final o = _original;
-    final title = _title.text.trim();
+    final title = _title.text.replaceAll(RegExp(r'[\r\n]+'), ' ').trim();
     return Note(
       title: title,
       lines: _model.saved,
@@ -165,28 +168,41 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  Future<void> _save({required bool push}) async {
+  Future<void>? _saving;
+
+  /// Saves run one after another, never overlapping.
+  Future<void> _save({required bool push}) {
+    final prev = _saving ?? Future.value();
+    final next = prev.then((_) => _saveNow(push: push));
+    _saving = next;
+    return next.whenComplete(() {
+      if (identical(_saving, next)) _saving = null;
+    });
+  }
+
+  Future<void> _saveNow({required bool push}) async {
     _debounce?.cancel();
-    if (!_dirty) {
-      if (push && _savedLocally) {
-        _savedLocally = false;
-        await c.sync();
+    if (_dirty) {
+      _dirty = false;
+      final note = _currentNote();
+      // Write locally first and record what was written, then sync: typing
+      // during the network round trip is compared against this text.
+      if (_path == null) {
+        _path = await c.saveNewNote(widget.folder, note, push: false);
+      } else {
+        _path = await c.saveNote(_path!, note, push: false, basedOn: _basedOn);
       }
-      return;
+      _basedOn = serializeNote(note);
+      _savedLocally = _path != null;
+      final notice = c.notice;
+      if (notice != null && mounted) {
+        c.notice = null;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(notice)));
+      }
     }
-    _dirty = false;
-    final note = _currentNote();
-    if (_path == null) {
-      _path = await c.saveNewNote(widget.folder, note, push: push);
-    } else {
-      _path = await c.saveNote(_path!, note, push: push, basedOn: _basedOn);
-    }
-    _basedOn = serializeNote(note);
-    _savedLocally = !push && _path != null;
-    final notice = c.notice;
-    if (notice != null && mounted) {
-      c.notice = null;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(notice)));
+    if (push && _savedLocally) {
+      _savedLocally = false;
+      await c.sync();
     }
   }
 

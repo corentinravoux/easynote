@@ -45,10 +45,25 @@ void main() {
     expect(c.notes.map((n) => n.path), ['lya/tomo/maps.md']);
   });
 
-  test('concurrent syncs share one run', () async {
+  test('syncs requested during a sync collapse into one follow-up run', () async {
     remote.calls = 0;
     await Future.wait([c.sync(), c.sync(), c.sync()]);
-    expect(remote.calls, 1);
+    expect(remote.calls, 2); // one run, plus one for the calls made meanwhile
+  });
+
+  test('a note saved while a sync runs is still pushed', () async {
+    final first = c.sync();
+    await c.store.writeNote('inbox.md', '# Inbox\n- mid-sync\n');
+    await c.sync();
+    await first;
+    expect(utf8.decode(remote.files()['inbox.md']!), '# Inbox\n- mid-sync\n');
+  });
+
+  test('an unexpected error ends the sync with a status, not a hang', () async {
+    remote.failNext = StateError('boom');
+    await c.sync();
+    expect(c.status.phase, SyncPhase.error);
+    expect(c.status.message, contains('boom'));
   });
 
   test('save writes to disk before syncing; offline shows pending', () async {

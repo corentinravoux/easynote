@@ -79,7 +79,14 @@ class _EasyNoteAppState extends State<EasyNoteApp> {
   @override
   void initState() {
     super.initState();
-    _c = AppController(store: widget.store, remoteFactory: _remote, device: _settings.device);
+    _c = AppController(
+      store: widget.store,
+      remoteFactory: _remote,
+      device: _settings.device,
+      remoteId: () => _settings.configured
+          ? '${_settings.owner}/${_settings.repo}@${_settings.branch}'
+          : null,
+    );
     _c.addListener(() => _bridge.update(_c.recent()));
     _lifecycle = AppLifecycleListener(
       onResume: Platform.isAndroid ? _c.sync : null,
