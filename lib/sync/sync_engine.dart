@@ -137,18 +137,8 @@ class SyncEngine {
     result.conflicts.add(copy);
   }
 
-  Future<String> _conflictPath(String path) async {
-    final t = clock();
-    String two(int v) => v.toString().padLeft(2, '0');
-    final stamp = '${t.year}${two(t.month)}${two(t.day)}-${two(t.hour)}${two(t.minute)}';
-    final stem = path.endsWith('.md') ? path.substring(0, path.length - 3) : path;
-    final name = '$stem.conflict-${slugify(device)}-$stamp';
-    var candidate = '$name.md';
-    for (var i = 2; await store.readBytes(candidate) != null; i++) {
-      candidate = '$name-$i.md';
-    }
-    return candidate;
-  }
+  Future<String> _conflictPath(String path) =>
+      conflictCopyPath(store, path, device, clock());
 
   static List<int> _markConflict(List<int> bytes) {
     final text = utf8.decode(bytes, allowMalformed: true);
@@ -189,4 +179,19 @@ class SyncEngine {
     if (changes[p] == null) return 'delete $p';
     return store.state.base.containsKey(p) ? 'edit $p' : 'add $p';
   }
+}
+
+/// A free path next to [path] for a conflict copy made on [device] at [t]:
+/// `idea.md` → `idea.conflict-laptop-20261016-1205.md` (then `-2`, `-3`…).
+Future<String> conflictCopyPath(
+    LocalStore store, String path, String device, DateTime t) async {
+  String two(int v) => v.toString().padLeft(2, '0');
+  final stamp = '${t.year}${two(t.month)}${two(t.day)}-${two(t.hour)}${two(t.minute)}';
+  final stem = path.endsWith('.md') ? path.substring(0, path.length - 3) : path;
+  final name = '$stem.conflict-${slugify(device)}-$stamp';
+  var candidate = '$name.md';
+  for (var i = 2; await store.readBytes(candidate) != null; i++) {
+    candidate = '$name-$i.md';
+  }
+  return candidate;
 }

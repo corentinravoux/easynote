@@ -189,17 +189,33 @@ class AppController extends ChangeNotifier {
   }
 
   /// Write [note] to [path] if its text changed, then optionally sync.
-  Future<void> saveNote(String path, Note note, {bool push = true}) async {
+  ///
+  /// [basedOn] is the file text the editor started from. If the file changed
+  /// on disk since (a sync brought another device's version), [note] is
+  /// written to a conflict copy instead, so neither version is lost. Returns
+  /// the path actually written.
+  Future<String> saveNote(String path, Note note,
+      {bool push = true, String? basedOn}) async {
     final text = serializeNote(note);
-    if (await store.readNote(path) != text) {
-      await store.writeNote(path, text);
-      _notes[path] = NoteSummary(path, note);
+    final onDisk = await store.readNote(path);
+    var target = path;
+    if (basedOn != null && onDisk != null && onDisk != basedOn && onDisk != text) {
+      target = await conflictCopyPath(store, path, device.isEmpty ? 'device' : device, DateTime.now());
+      notice = 'This note changed on another device. Your version is saved as a copy next to it.';
     }
-    store.touch(path);
+    if (target != path || onDisk != text) {
+      await store.writeNote(target, text);
+      _notes[target] = NoteSummary(target, note);
+    }
+    store.touch(target);
     await store.saveState();
     notifyListeners();
     if (push) await sync();
+    return target;
   }
+
+  /// A one-off message for the user; the UI shows it and clears it.
+  String? notice;
 
   /// Save a note that has no file yet. Returns its new path, or null when
   /// the note is empty and was discarded.
@@ -211,8 +227,7 @@ class AppController extends ChangeNotifier {
         ? note.title
         : note.lines.firstWhere((l) => l.text.trim().isNotEmpty).text;
     final path = uniquePath(folder == recentFolder ? '' : folder, seed, _notes.keys.toSet());
-    await saveNote(path, note, push: push);
-    return path;
+    return saveNote(path, note, push: push);
   }
 
   /// Rename a note's file after its title and/or move it to [toFolder].

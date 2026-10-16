@@ -100,4 +100,23 @@ void main() {
     await c.sync();
     expect(c.status.phase, SyncPhase.localOnly);
   });
+
+  test('saving over a note changed underneath makes a copy, loses nothing', () async {
+    final opened = (await c.store.readNote('inbox.md'))!;
+    remote.externalCommit({'inbox.md': utf8.encode('# Inbox\n- from phone\n')});
+    await c.sync(); // the editor is open and has not typed yet
+    final mine = parseNote('# Inbox\n- from laptop\n');
+    final path = await c.saveNote('inbox.md', mine, basedOn: opened);
+    expect(path, startsWith('inbox.conflict-laptop-'));
+    expect(c.notice, isNotNull);
+    expect(utf8.decode(remote.files()['inbox.md']!), '# Inbox\n- from phone\n');
+    expect(utf8.decode(remote.files()[path]!), '# Inbox\n- from laptop\n');
+  });
+
+  test('saving with an up-to-date base writes in place', () async {
+    final opened = (await c.store.readNote('inbox.md'))!;
+    final path = await c.saveNote('inbox.md', parseNote('# Inbox\n- x\n'), basedOn: opened);
+    expect(path, 'inbox.md');
+    expect(c.notice, isNull);
+  });
 }

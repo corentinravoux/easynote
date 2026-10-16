@@ -86,12 +86,14 @@ class _EasyNoteAppState extends State<EasyNoteApp> {
       onExitRequested: _beforeExit,
     );
     _c.reload().then((_) {
+      // Widget taps are handled once the notes are loaded, so a cold start
+      // from the widget can open the note it names.
+      _launches = _bridge.launches().listen(_onLaunch);
       _c.sync();
       if (!_settings.configured) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _openSettings());
       }
     });
-    _launches = _bridge.launches().listen(_onLaunch);
   }
 
   GithubRemote? _remote() {

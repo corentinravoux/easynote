@@ -51,6 +51,10 @@ class _EditorPageState extends State<EditorPage> {
 
   String? _path;
   Note? _original;
+
+  /// File text this editor started from or last wrote; see
+  /// [AppController.saveNote].
+  String? _basedOn;
   bool _loading = true;
   final _title = TextEditingController();
   final _titleFocus = FocusNode();
@@ -70,13 +74,32 @@ class _EditorPageState extends State<EditorPage> {
     _path = widget.path;
     _lifecycle = AppLifecycleListener(onHide: _flush, onPause: _flush);
     c.flushEditor = _flush;
+    c.addListener(_onControllerChange);
     _load();
+  }
+
+  /// After a sync, show the newer version of this note if the user has not
+  /// typed anything since it was opened or saved.
+  Future<void> _onControllerChange() async {
+    final path = _path;
+    if (_loading || _dirty || path == null || _closed) return;
+    final text = await c.store.readNote(path);
+    if (text == null || text == _basedOn || _dirty || !mounted) return;
+    final note = parseNote(text);
+    setState(() {
+      _basedOn = text;
+      _original = note;
+      _title.text = note.title;
+      _model = EditorModel(note.lines);
+      _rebuildRows();
+    });
   }
 
   Future<void> _load() async {
     final path = _path;
     Note note;
     if (path != null) {
+      _basedOn = await c.store.readNote(path);
       note = await c.load(path) ?? Note(title: '');
       _original = note;
     } else {
@@ -156,9 +179,15 @@ class _EditorPageState extends State<EditorPage> {
     if (_path == null) {
       _path = await c.saveNewNote(widget.folder, note, push: push);
     } else {
-      await c.saveNote(_path!, note, push: push);
+      _path = await c.saveNote(_path!, note, push: push, basedOn: _basedOn);
     }
+    _basedOn = serializeNote(note);
     _savedLocally = !push && _path != null;
+    final notice = c.notice;
+    if (notice != null && mounted) {
+      c.notice = null;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(notice)));
+    }
   }
 
   Future<void> _flush() => _save(push: true);
@@ -172,6 +201,7 @@ class _EditorPageState extends State<EditorPage> {
   @override
   void dispose() {
     if (c.flushEditor == _flush) c.flushEditor = null;
+    c.removeListener(_onControllerChange);
     _debounce?.cancel();
     _lifecycle.dispose();
     _title.dispose();
@@ -341,6 +371,21 @@ class _EditorPageState extends State<EditorPage> {
           top: false,
           child: Row(children: [
             ..._itemButtons(p),
+            IconButton(
+              tooltip: 'Delete item',
+              icon: const Icon(Icons.backspace_outlined),
+              onPressed: () {
+                final i = _current;
+                if (_rows.length <= 1) {
+                  _rows[0].text.clear();
+                  _model.setText(0, '');
+                  _changed();
+                  return;
+                }
+                _model.lines.removeAt(i);
+                _structural((index: i == 0 ? 0 : i - 1, caret: 1 << 20));
+              },
+            ),
             const Spacer(),
             IconButton(
               tooltip: 'New item',
