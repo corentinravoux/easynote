@@ -64,6 +64,10 @@ class AppController extends ChangeNotifier {
   final Map<String, NoteSummary> _notes = {};
   List<String> _folders = [];
 
+  /// Set by an open editor: saves its text and syncs. Called before the
+  /// desktop window closes.
+  Future<void> Function()? flushEditor;
+
   String _folder = '';
   String _query = '';
   SyncStatus status = const SyncStatus(SyncPhase.idle);
