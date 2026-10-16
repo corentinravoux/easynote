@@ -1,0 +1,25 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: No personal data in the code
+        run: |
+          if git grep -nIiE 'easynote-notes|/home/|github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{20,}' -- ':!README.md' ':!LICENSE' ':!.github/'; then
+            echo "Personal paths, repo names or tokens found above." >&2
+            exit 1
+          fi
