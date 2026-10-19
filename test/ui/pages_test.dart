@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -32,13 +33,21 @@ void main() {
 
   tearDown(() => tmp.deleteSync(recursive: true));
 
-  // File IO is real; let it run, then let the widget tree catch up.
-  Future<void> settle(WidgetTester t) async {
-    for (var i = 0; i < 30; i++) {
+  // File IO is real: let it run and pump the tree until [ok] holds. Waits
+  // on the condition, not a fixed number of cycles, so slow CI machines pass.
+  Future<void> waitFor(WidgetTester t, FutureOr<bool> Function() ok, String what) async {
+    for (var i = 0; i < 500; i++) {
       await t.runAsync(() => Future.delayed(const Duration(milliseconds: 20)));
       await t.pump();
+      if (await t.runAsync(() async => await ok()) == true) return;
     }
+    fail('timed out waiting for $what');
   }
+
+  Future<String?> disk(String path) => c.store.readNote(path);
+  String? pushed(String path) =>
+      remote.files()[path] == null ? null : utf8.decode(remote.files()[path]!);
+  bool editorLoaded() => find.byType(ItemRow).evaluate().isNotEmpty;
 
   Widget app(Widget home) => MaterialApp(theme: buildTheme(Palette.light, Brightness.light), home: home);
 
@@ -109,26 +118,22 @@ void main() {
       ),
     )));
     await t.tap(find.text('open'));
-    await settle(t);
+    await waitFor(t, editorLoaded, 'the editor to load');
     final row = find.byType(ItemRow).first;
     await t.enterText(find.descendant(of: row, matching: find.byType(TextField)), 'call Bob');
     await t.pump();
     await t.sendKeyEvent(LogicalKeyboardKey.escape);
-    await settle(t);
+    await waitFor(t, () => pushed('inbox.md') == '# Inbox\n- call Bob\n', 'the push');
     await t.pumpAndSettle();
     expect(find.text('open'), findsOneWidget);
-    await t.runAsync(() async {
-      expect(await c.store.readNote('inbox.md'), '# Inbox\n- call Bob\n');
-    });
-    await settle(t);
-    expect(utf8.decode(remote.files()['inbox.md']!), '# Inbox\n- call Bob\n');
+    expect(await t.runAsync(() => disk('inbox.md')), '# Inbox\n- call Bob\n');
   });
 
   testWidgets('editor: Ctrl+Enter turns a bullet into a checkbox', (t) async {
     await t.runAsync(setUpController);
     await sized(t, 1200, 800);
     await t.pumpWidget(app(EditorPage(controller: c, path: 'inbox.md', folder: '', onSettings: () {})));
-    await settle(t);
+    await waitFor(t, editorLoaded, 'the editor to load');
     await t.tap(find.descendant(of: find.byType(ItemRow).first, matching: find.byType(TextField)));
     await t.pump();
     await t.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
@@ -142,13 +147,10 @@ void main() {
     await t.runAsync(setUpController);
     await sized(t, 1200, 800);
     await t.pumpWidget(app(EditorPage(controller: c, path: 'inbox.md', folder: '', onSettings: () {})));
-    await settle(t);
+    await waitFor(t, editorLoaded, 'the editor to load');
     await t.enterText(find.descendant(of: find.byType(ItemRow).first, matching: find.byType(TextField)), 'draft');
     await t.pump(const Duration(milliseconds: 1100));
-    await settle(t);
-    await t.runAsync(() async {
-      expect(await c.store.readNote('inbox.md'), '# Inbox\n- draft\n');
-    });
+    await waitFor(t, () async => await disk('inbox.md') == '# Inbox\n- draft\n', 'the autosave');
     expect(utf8.decode(remote.files()['inbox.md']!), '# Inbox\n- call\n'); // not pushed yet
   });
 }

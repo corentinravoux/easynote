@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: lsb_release -ds; uname -r; df -T /tmp | tail -1
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -16,7 +17,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter test
+      - run: flutter test --reporter github
       - name: No personal data in the code
         run: |
           if git grep -nIiE 'easynote-notes|/home/|github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{20,}' -- ':!README.md' ':!LICENSE' ':!.github/'; then
