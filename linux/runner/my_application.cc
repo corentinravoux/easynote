@@ -57,6 +57,12 @@ static void my_application_activate(GApplication* application) {
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
+  // Impeller's OpenGL backend on Linux leaves stale frames on screen after a
+  // resize (seen going full screen on X11 + Mesa radeonsi), so the Skia
+  // renderer is the default. EASYNOTE_IMPELLER=1 opts back in.
+  const gchar* impeller = g_getenv("EASYNOTE_IMPELLER");
+  fl_dart_project_set_enable_impeller(
+      project, impeller != nullptr && g_strcmp0(impeller, "1") == 0);
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
