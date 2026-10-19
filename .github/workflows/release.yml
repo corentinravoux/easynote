@@ -28,9 +28,9 @@ jobs:
           if [ -n "$KEYSTORE_B64" ]; then
             echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "APK_NAME=easynote-${GITHUB_REF_NAME}.apk" >> "$GITHUB_ENV"
+            echo "SIGNING=Signed with the release key." >> "$GITHUB_ENV"
           else
-            echo "APK_NAME=easynote-${GITHUB_REF_NAME}-debug-signed.apk" >> "$GITHUB_ENV"
+            echo "SIGNING=Signed with a debug key: a later signed release needs an uninstall first." >> "$GITHUB_ENV"
           fi
       - name: Build APK
         env:
@@ -39,10 +39,16 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           flutter build apk --release
-          mv build/app/outputs/flutter-apk/app-release.apk "$APK_NAME"
+          # A fixed name, so releases/latest/download/easynote.apk always works.
+          mv build/app/outputs/flutter-apk/app-release.apk easynote.apk
       - uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.APK_NAME }}
+          files: easynote.apk
+          body: |
+            **Android** (phone, e-ink tablet): download `easynote.apk` and open it on the device.
+            **Linux**: download `easynote-linux-x64.tar.gz`, then run `scripts/install-linux.sh easynote-linux-x64.tar.gz` from the repository.
+
+            ${{ env.SIGNING }}
 
   linux:
     runs-on: ubuntu-latest
@@ -58,7 +64,7 @@ jobs:
           cache: true
       - run: flutter build linux --release
       - run: |
-          tar -czf "easynote-${GITHUB_REF_NAME}-linux-x64.tar.gz" -C build/linux/x64/release bundle
+          tar -czf easynote-linux-x64.tar.gz -C build/linux/x64/release bundle
       - uses: softprops/action-gh-release@v2
         with:
-          files: easynote-*-linux-x64.tar.gz
+          files: easynote-linux-x64.tar.gz

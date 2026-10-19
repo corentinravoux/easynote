@@ -5,6 +5,14 @@ Android, with a home-screen widget. Notes are Markdown files in a private
 GitHub repository of your own. There is no server and no background sync:
 the app syncs when it opens and when you close a note.
 
+## Download
+
+- **Android** (phone, e-ink tablet): [easynote.apk](https://github.com/corentinravoux/easynote/releases/latest/download/easynote.apk)
+- **Linux** (x64): [easynote-linux-x64.tar.gz](https://github.com/corentinravoux/easynote/releases/latest/download/easynote-linux-x64.tar.gz)
+
+These links always point to the newest release. All releases:
+[releases](https://github.com/corentinravoux/easynote/releases).
+
 ## How notes are stored
 
 The repository *is* the note tree. A folder is a directory, at any depth;
@@ -45,16 +53,18 @@ anyone with access to the repository can read them.
 
 ## Install
 
-**Android** (phone or e-ink tablet): download the APK from the
-[latest release](../../releases/latest) and open it. Long-press the home
+**Android** (phone or e-ink tablet): download
+[easynote.apk](https://github.com/corentinravoux/easynote/releases/latest/download/easynote.apk)
+on the device and open it. Long-press the home
 screen to add the *Recent notes* widget. On an e-ink tablet, turn on
 **E-ink mode** in Settings.
 
-**Linux**: download `easynote-<version>-linux-x64.tar.gz` from the release
+**Linux**: download
+[easynote-linux-x64.tar.gz](https://github.com/corentinravoux/easynote/releases/latest/download/easynote-linux-x64.tar.gz)
 and run
 
 ```bash
-scripts/install-linux.sh easynote-<version>-linux-x64.tar.gz
+scripts/install-linux.sh easynote-linux-x64.tar.gz
 ```
 
 It installs into `~/.local/share/easynote/app` and adds a menu entry.
