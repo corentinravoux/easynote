@@ -11,7 +11,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 dest="${XDG_DATA_HOME:-$HOME/.local/share}/easynote/app"
 apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps"
+hicolor="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
 
 src="${1:-$here/build/linux/x64/release/bundle}"
 tmp="$(mktemp -d)"
@@ -26,28 +26,36 @@ if [[ ! -x "$src/easynote" ]]; then
   exit 1
 fi
 
-mkdir -p "$(dirname "$dest")" "$apps" "$icons"
+mkdir -p "$(dirname "$dest")" "$apps"
 rm -rf "$dest.new"
 cp -a "$src" "$dest.new"
 rm -rf "$dest"
 mv "$dest.new" "$dest"
 
-icon_src="$here/assets/icon/easynote.png"
-[[ -f "$icon_src" ]] || icon_src="$dest/data/flutter_assets/assets/icon/easynote.png"
-cp "$icon_src" "$icons/easynote.png"
+# Icons: the scalable SVG when the repository is at hand, and the bundled PNG
+# (always present) at 512 px. The icon name matches the application id.
+png="$dest/data/flutter_assets/assets/icon/easynote.png"
+mkdir -p "$hicolor/512x512/apps"
+cp "$png" "$hicolor/512x512/apps/io.easynote.app.png"
+if [[ -f "$here/assets/icon/easynote.svg" ]]; then
+  mkdir -p "$hicolor/scalable/apps"
+  cp "$here/assets/icon/easynote.svg" "$hicolor/scalable/apps/io.easynote.app.svg"
+fi
+rm -f "$hicolor/512x512/apps/easynote.png" "$apps/easynote.desktop"  # older installs
 
-cat > "$apps/easynote.desktop" <<DESKTOP
+# Named after the application id, which GNOME uses to match the window.
+cat > "$apps/io.easynote.app.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=easynote
 Comment=Notes synced to a GitHub repository
 Exec=$dest/easynote
-Icon=easynote
+Icon=io.easynote.app
 Terminal=false
 Categories=Office;Utility;
 StartupWMClass=io.easynote.app
 DESKTOP
 
 update-desktop-database "$apps" >/dev/null 2>&1 || true
-gtk-update-icon-cache -q "$(dirname "$(dirname "$icons")")" >/dev/null 2>&1 || true
+gtk-update-icon-cache -q -t "$hicolor" >/dev/null 2>&1 || true
 echo "Installed to $dest. Launch easynote from the applications menu."

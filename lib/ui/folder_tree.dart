@@ -66,7 +66,18 @@ class _FolderTreeState extends State<FolderTree> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-          child: Text('easynote', style: titleText(p, size: 22)),
+          child: Row(children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.asset('assets/icon/easynote.png', width: 28, height: 28,
+                  filterQuality: FilterQuality.medium),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('easynote',
+                  style: titleText(p, size: 22), overflow: TextOverflow.ellipsis),
+            ),
+          ]),
         ),
         _TreeRow(
           label: 'Recent',
