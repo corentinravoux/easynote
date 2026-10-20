@@ -1,7 +1,10 @@
 // Runs against a real, throwaway GitHub repo. Never point it at your notes.
 //
 //   EASYNOTE_TEST_TOKEN=github_pat_... EASYNOTE_TEST_REPO=owner/scratch-repo \
-//     flutter test test/live
+//     [EASYNOTE_TEST_BRANCH=live-test] flutter test test/live
+//
+// A throwaway branch of a real repo works too: the test only touches
+// easynote-live-test/ and removes it at the end.
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final token = Platform.environment['EASYNOTE_TEST_TOKEN'];
   final repo = Platform.environment['EASYNOTE_TEST_REPO'];
+  final branch = Platform.environment['EASYNOTE_TEST_BRANCH'] ?? 'main';
   final skip = token == null || repo == null
       ? 'set EASYNOTE_TEST_TOKEN and EASYNOTE_TEST_REPO'
       : null;
@@ -24,7 +28,7 @@ void main() {
     final path = 'easynote-live-test/$stamp.md';
     Future<SyncEngine> device(String id) async => SyncEngine(
           await LocalStore.open(Directory('${tmp.path}/$id/n'), File('${tmp.path}/$id/s.json')),
-          GithubRemote(owner: owner, repo: name, branch: 'main', token: token!),
+          GithubRemote(owner: owner, repo: name, branch: branch, token: token!),
           device: id,
         );
     final a = await device('a'), b = await device('b');
